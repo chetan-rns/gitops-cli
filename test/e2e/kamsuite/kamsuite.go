@@ -3,12 +3,15 @@ package kamsuite
 import (
 	"bytes"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/cucumber/godog"
 	"github.com/cucumber/messages-go/v10"
+	"github.com/redhat-developer/kam/pkg/pipelines/git"
 )
 
 // FeatureContext defines godog.Suite steps for the test suite.
@@ -17,6 +20,14 @@ func FeatureContext(s *godog.Suite) {
 	// KAM related steps
 	s.Step(`^directory "([^"]*)" should exist$`,
 		DirectoryShouldExist)
+
+	s.Step(`^Apply Argo CD applications at "([^"]*)" to the cluster`, kubectlKustomizeApply)
+
+	s.Step(`^Argo CD applications "([^"]*)" are healthy and in-sync`, argocdAppStatus)
+
+	s.Step("^Wait", wait)
+
+	s.Step("^Make gitops repository public", makeRepoPublic)
 
 	s.BeforeSuite(func() {
 		fmt.Println("Before suite")
@@ -89,4 +100,30 @@ func executeGhRepoDeleteCommad(arg []string) (bool, string) {
 		return false, stderr.String()
 	}
 	return true, stderr.String()
+}
+
+func wait() error {
+	duration := 1 * time.Minute
+	time.Sleep(duration)
+	return nil
+}
+
+func makeRepoPublic() error {
+	repoName, err := repoFromURL(os.Getenv("GITOPS_REPO_URL"))
+	fmt.Println(repoName)
+	if err != nil {
+		return err
+	}
+	args := []string{"api", "repos/" + repoName, "-F", "private=false"}
+	cmd := exec.Command("gh", args...)
+	fmt.Println("GH Command : ", cmd.Args)
+	return cmd.Run()
+}
+
+func repoFromURL(raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", err
+	}
+	return git.GetRepoName(u)
 }
